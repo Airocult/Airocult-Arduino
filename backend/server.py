@@ -79,7 +79,11 @@ async def run_arduino_cli(args: List[str]) -> tuple[int, str, str]:
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
-            env={**os.environ, 'PATH': f"/app/arduino-cli/bin:{os.environ.get('PATH', '')}"}
+            env={
+                **os.environ, 
+                'PATH': f"/app/arduino-cli/bin:{os.environ.get('PATH', '')}",
+                'HOME': '/root'
+            }
         )
         stdout, stderr = await process.communicate()
         return process.returncode, stdout.decode(), stderr.decode()
