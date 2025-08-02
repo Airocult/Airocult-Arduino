@@ -1,7 +1,9 @@
-from fastapi import FastAPI, APIRouter, HTTPException, status, WebSocket, WebSocketDisconnect
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, APIRouter, HTTPException, status, WebSocket, WebSocketDisconnect, Depends, Request
+from fastapi.responses import StreamingResponse, RedirectResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
@@ -16,12 +18,15 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 import aiofiles
+import requests
+import jwt
 from github import Github
 import io
 import re
 import time
+import urllib.parse
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -34,18 +39,25 @@ db = client[os.environ['DB_NAME']]
 # Create the main app without a prefix
 app = FastAPI()
 
+# Add session middleware
+app.add_middleware(SessionMiddleware, secret_key=os.environ['JWT_SECRET'])
+
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
 # Arduino CLI Path
 ARDUINO_CLI_PATH = "/app/arduino-cli/bin/arduino-cli"
 
-# GitHub Token
-GITHUB_TOKEN = "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"
-github_client = Github(GITHUB_TOKEN)
+# GitHub OAuth Configuration
+GITHUB_CLIENT_ID = os.environ['GITHUB_CLIENT_ID']
+GITHUB_CLIENT_SECRET = os.environ['GITHUB_CLIENT_SECRET']
+JWT_SECRET = os.environ['JWT_SECRET']
 
 # Serial connection manager
 serial_connections = {}
+
+# Security
+security = HTTPBearer(auto_error=False)
 
 # Models
 class ArduinoProject(BaseModel):
@@ -56,6 +68,7 @@ class ArduinoProject(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.utcnow)
     github_repo: Optional[str] = None
     is_public: bool = True
+    user_id: str
 
 class CreateProjectRequest(BaseModel):
     name: str
@@ -81,6 +94,18 @@ class SerialRequest(BaseModel):
     port: str
     baud_rate: int = 9600
 
+class User(BaseModel):
+    id: str
+    username: str
+    avatar_url: str
+    access_token: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+class GitHubOAuthResponse(BaseModel):
+    access_token: str
+    token_type: str
+    scope: str
+
 # Helper functions
 async def run_arduino_cli(args: List[str]) -> tuple[int, str, str]:
     """Run arduino-cli command and return (returncode, stdout, stderr)"""
@@ -101,21 +126,47 @@ async def run_arduino_cli(args: List[str]) -> tuple[int, str, str]:
     except Exception as e:
         return 1, "", str(e)
 
-async def create_github_repo(name: str, is_public: bool = True) -> str:
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Optional[User]:
+    """Get current authenticated user from JWT token"""
+    if not credentials:
+        return None
+    
+    try:
+        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=["HS256"])
+        user_data = await db.users.find_one({"id": payload["user_id"]})
+        if user_data:
+            return User(**user_data)
+    except:
+        pass
+    return None
+
+async def require_auth(user: User = Depends(get_current_user)) -> User:
+    """Require authentication"""
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return user
+
+def create_github_client(access_token: str) -> Github:
+    """Create GitHub client with user's access token"""
+    return Github(access_token)
+
+async def create_github_repo(user: User, name: str, is_public: bool = True) -> str:
     """Create a GitHub repository and return the repo URL"""
     try:
-        user = github_client.get_user()
-        repo = user.create_repo(name, private=not is_public)
+        github_client = create_github_client(user.access_token)
+        github_user = github_client.get_user()
+        repo = github_user.create_repo(name, private=not is_public)
         return repo.html_url
     except Exception as e:
         logging.error(f"Failed to create GitHub repo: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to create GitHub repository: {str(e)}")
 
-async def save_to_github(repo_name: str, filename: str, content: str, commit_message: str = "Update Arduino code"):
+async def save_to_github(user: User, repo_name: str, filename: str, content: str, commit_message: str = "Update Arduino code"):
     """Save file to GitHub repository"""
     try:
-        user = github_client.get_user()
-        repo = user.get_repo(repo_name)
+        github_client = create_github_client(user.access_token)
+        github_user = github_client.get_user()
+        repo = github_user.get_repo(repo_name)
         
         try:
             # Try to get existing file
@@ -171,7 +222,99 @@ def parse_library_list(output: str) -> List[Dict]:
     
     return libraries
 
-# Routes
+# GitHub OAuth Routes
+@api_router.get("/auth/github")
+async def github_auth():
+    """Initiate GitHub OAuth flow"""
+    github_auth_url = (
+        f"https://github.com/login/oauth/authorize"
+        f"?client_id={GITHUB_CLIENT_ID}"
+        f"&redirect_uri={urllib.parse.quote('https://ee41e7d3-c394-4a4c-a85b-a9158bf4d678.preview.emergentagent.com/api/auth/github/callback')}"
+        f"&scope=repo,user:email"
+        f"&state={str(uuid.uuid4())}"
+    )
+    return {"auth_url": github_auth_url}
+
+@api_router.get("/auth/github/callback")
+async def github_callback(code: str, state: str):
+    """Handle GitHub OAuth callback"""
+    try:
+        # Exchange code for access token
+        token_response = requests.post(
+            "https://github.com/login/oauth/access_token",
+            headers={"Accept": "application/json"},
+            data={
+                "client_id": GITHUB_CLIENT_ID,
+                "client_secret": GITHUB_CLIENT_SECRET,
+                "code": code,
+            }
+        )
+        
+        token_data = token_response.json()
+        access_token = token_data.get("access_token")
+        
+        if not access_token:
+            raise HTTPException(status_code=400, detail="Failed to get access token")
+        
+        # Get user info from GitHub
+        user_response = requests.get(
+            "https://api.github.com/user",
+            headers={"Authorization": f"token {access_token}"}
+        )
+        user_data = user_response.json()
+        
+        # Create or update user in database
+        user = User(
+            id=str(user_data["id"]),
+            username=user_data["login"],
+            avatar_url=user_data["avatar_url"],
+            access_token=access_token
+        )
+        
+        # Upsert user in database
+        await db.users.update_one(
+            {"id": user.id},
+            {"$set": user.dict()},
+            upsert=True
+        )
+        
+        # Create JWT token
+        jwt_payload = {
+            "user_id": user.id,
+            "username": user.username,
+            "exp": datetime.utcnow() + timedelta(days=30)
+        }
+        jwt_token = jwt.encode(jwt_payload, JWT_SECRET, algorithm="HS256")
+        
+        # Redirect to frontend with token
+        return RedirectResponse(
+            url=f"/?token={jwt_token}&user={user.username}",
+            status_code=302
+        )
+        
+    except Exception as e:
+        logging.error(f"GitHub OAuth error: {e}")
+        return RedirectResponse(url="/?error=auth_failed", status_code=302)
+
+@api_router.get("/auth/user")
+async def get_user_info(user: User = Depends(get_current_user)):
+    """Get current user information"""
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    return {
+        "id": user.id,
+        "username": user.username,
+        "avatar_url": user.avatar_url,
+        "authenticated": True
+    }
+
+@api_router.post("/auth/logout")
+async def logout():
+    """Logout user"""
+    return {"message": "Logged out successfully"}
+
+# Arduino Routes
 @api_router.get("/")
 async def root():
     return {"message": "Arduino IDE API"}
@@ -425,12 +568,13 @@ async def websocket_serial(websocket: WebSocket, port: str):
     except WebSocketDisconnect:
         pass
 
+# Project Routes (Require Authentication)
 @api_router.post("/projects", response_model=ArduinoProject)
-async def create_project(request: CreateProjectRequest):
+async def create_project(request: CreateProjectRequest, user: User = Depends(require_auth)):
     """Create a new Arduino project with GitHub repository"""
     try:
         # Create GitHub repository first
-        repo_url = await create_github_repo(request.name, request.is_public)
+        repo_url = await create_github_repo(user, request.name, request.is_public)
         repo_name = repo_url.split('/')[-1]
         
         # Create project document
@@ -438,14 +582,15 @@ async def create_project(request: CreateProjectRequest):
             name=request.name,
             code=request.code,
             github_repo=repo_url,
-            is_public=request.is_public
+            is_public=request.is_public,
+            user_id=user.id
         )
         
         # Save to MongoDB
         await db.projects.insert_one(project.dict())
         
         # Save initial code to GitHub
-        await save_to_github(repo_name, f"{request.name}.ino", request.code, "Initial Arduino sketch")
+        await save_to_github(user, repo_name, f"{request.name}.ino", request.code, "Initial Arduino sketch")
         
         return project
         
@@ -453,19 +598,19 @@ async def create_project(request: CreateProjectRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/projects", response_model=List[ArduinoProject])
-async def list_projects():
-    """List all Arduino projects"""
+async def list_projects(user: User = Depends(require_auth)):
+    """List user's Arduino projects"""
     try:
-        projects = await db.projects.find().to_list(100)
+        projects = await db.projects.find({"user_id": user.id}).to_list(100)
         return [ArduinoProject(**project) for project in projects]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.get("/projects/{project_id}", response_model=ArduinoProject)
-async def get_project(project_id: str):
+async def get_project(project_id: str, user: User = Depends(require_auth)):
     """Get a specific Arduino project"""
     try:
-        project = await db.projects.find_one({"id": project_id})
+        project = await db.projects.find_one({"id": project_id, "user_id": user.id})
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
         return ArduinoProject(**project)
@@ -473,36 +618,36 @@ async def get_project(project_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.put("/projects/{project_id}", response_model=ArduinoProject)
-async def update_project(project_id: str, code: str):
+async def update_project(project_id: str, code: str, user: User = Depends(require_auth)):
     """Update Arduino project code and save to GitHub"""
     try:
-        project = await db.projects.find_one({"id": project_id})
+        project = await db.projects.find_one({"id": project_id, "user_id": user.id})
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
         
         # Update in MongoDB
         await db.projects.update_one(
-            {"id": project_id},
+            {"id": project_id, "user_id": user.id},
             {"$set": {"code": code, "updated_at": datetime.utcnow()}}
         )
         
         # Save to GitHub if repo exists
         if project.get('github_repo'):
             repo_name = project['github_repo'].split('/')[-1]
-            await save_to_github(repo_name, f"{project['name']}.ino", code, "Update Arduino sketch")
+            await save_to_github(user, repo_name, f"{project['name']}.ino", code, "Update Arduino sketch")
         
         # Return updated project
-        updated_project = await db.projects.find_one({"id": project_id})
+        updated_project = await db.projects.find_one({"id": project_id, "user_id": user.id})
         return ArduinoProject(**updated_project)
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @api_router.delete("/projects/{project_id}")
-async def delete_project(project_id: str):
+async def delete_project(project_id: str, user: User = Depends(require_auth)):
     """Delete Arduino project"""
     try:
-        result = await db.projects.delete_one({"id": project_id})
+        result = await db.projects.delete_one({"id": project_id, "user_id": user.id})
         if result.deleted_count == 0:
             raise HTTPException(status_code=404, detail="Project not found")
         return {"success": True, "message": "Project deleted successfully"}

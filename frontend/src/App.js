@@ -12,6 +12,7 @@ import { Badge } from './components/ui/badge';
 import { ScrollArea } from './components/ui/scroll-area';
 import { Separator } from './components/ui/separator';
 import { Switch } from './components/ui/switch';
+import { Avatar, AvatarFallback, AvatarImage } from './components/ui/avatar';
 import {
   Play,
   Upload,
@@ -40,7 +41,10 @@ import {
   Trash2,
   InstallIcon,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  LogIn,
+  LogOut,
+  User
 } from 'lucide-react';
 import './App.css';
 
@@ -65,6 +69,11 @@ void loop() {
   delay(1000);
   Serial.println("Hello Arduino!");
 }`);
+
+  // Authentication state
+  const [user, setUser] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authToken, setAuthToken] = useState(localStorage.getItem('arduino_auth_token'));
 
   // State management
   const [projects, setProjects] = useState([]);
@@ -109,17 +118,57 @@ void loop() {
   const wsRef = useRef(null);
   const plotterCanvasRef = useRef(null);
 
+  // Set up axios defaults
   useEffect(() => {
-    loadProjects();
+    if (authToken) {
+      axios.defaults.headers.common['Authorization'] = `Bearer ${authToken}`;
+    } else {
+      delete axios.defaults.headers.common['Authorization'];
+    }
+  }, [authToken]);
+
+  // Check for auth token in URL (OAuth redirect)
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    const username = urlParams.get('user');
+    const error = urlParams.get('error');
+
+    if (token && username) {
+      setAuthToken(token);
+      localStorage.setItem('arduino_auth_token', token);
+      setUser({ username });
+      setIsAuthenticated(true);
+      setOutput(prev => prev + `\n✓ Signed in as ${username}\n`);
+      
+      // Clean URL
+      window.history.replaceState({}, document.title, window.location.pathname);
+    } else if (error) {
+      setOutput(prev => prev + '\n✗ GitHub authentication failed\n');
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
+
+  // Load user info if token exists
+  useEffect(() => {
+    if (authToken && !user) {
+      loadUserInfo();
+    }
+  }, [authToken, user]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadProjects();
+    }
     loadInstalledBoards();
     loadInstalledLibraries();
     loadPorts();
-  }, []);
+  }, [isAuthenticated]);
 
   // WebSocket for serial communication
   useEffect(() => {
     if (isSerialConnected && selectedPort) {
-      const wsUrl = `ws://${window.location.host}/ws/serial/${encodeURIComponent(selectedPort)}`;
+      const wsUrl = `ws://${window.location.host.replace('https://', '').replace('http://', '')}/ws/serial/${encodeURIComponent(selectedPort)}`;
       wsRef.current = new WebSocket(wsUrl);
       
       wsRef.current.onmessage = (event) => {
@@ -147,12 +196,51 @@ void loop() {
     }
   }, [isSerialConnected, selectedPort]);
 
+  const loadUserInfo = async () => {
+    try {
+      const response = await axios.get(`${API}/auth/user`);
+      setUser(response.data);
+      setIsAuthenticated(true);
+    } catch (error) {
+      // Token is invalid, clear it
+      setAuthToken(null);
+      localStorage.removeItem('arduino_auth_token');
+      setIsAuthenticated(false);
+      setUser(null);
+    }
+  };
+
+  const initiateGitHubAuth = async () => {
+    try {
+      const response = await axios.get(`${API}/auth/github`);
+      window.location.href = response.data.auth_url;
+    } catch (error) {
+      setOutput(prev => prev + `\n✗ Failed to initiate GitHub authentication: ${error.message}\n`);
+    }
+  };
+
+  const logout = () => {
+    setAuthToken(null);
+    localStorage.removeItem('arduino_auth_token');
+    setIsAuthenticated(false);
+    setUser(null);
+    setProjects([]);
+    setCurrentProject(null);
+    setOutput(prev => prev + '\n✓ Signed out\n');
+    delete axios.defaults.headers.common['Authorization'];
+  };
+
   const loadProjects = async () => {
+    if (!isAuthenticated) return;
+    
     try {
       const response = await axios.get(`${API}/projects`);
       setProjects(response.data);
     } catch (error) {
       console.error('Failed to load projects:', error);
+      if (error.response?.status === 401) {
+        logout();
+      }
     }
   };
 
@@ -367,6 +455,10 @@ void loop() {
 
   const createProject = async () => {
     if (!newProjectName.trim()) return;
+    if (!isAuthenticated) {
+      setOutput(prev => prev + '\n✗ Please sign in with GitHub to create projects\n');
+      return;
+    }
     
     try {
       const response = await axios.post(`${API}/projects`, {
@@ -381,6 +473,9 @@ void loop() {
       setShowNewProject(false);
       loadProjects();
     } catch (error) {
+      if (error.response?.status === 401) {
+        logout();
+      }
       setOutput(prev => prev + `\n✗ Failed to create project: ${error.message}\n`);
     }
   };
@@ -392,6 +487,9 @@ void loop() {
       setCode(response.data.code);
       setOutput(prev => prev + `\n✓ Loaded project: ${response.data.name}\n`);
     } catch (error) {
+      if (error.response?.status === 401) {
+        logout();
+      }
       setOutput(prev => prev + `\n✗ Failed to load project: ${error.message}\n`);
     }
   };
@@ -406,6 +504,9 @@ void loop() {
       await axios.put(`${API}/projects/${currentProject.id}?code=${encodeURIComponent(code)}`);
       setOutput(prev => prev + `\n✓ Project saved to GitHub!\n`);
     } catch (error) {
+      if (error.response?.status === 401) {
+        logout();
+      }
       setOutput(prev => prev + `\n✗ Failed to save project: ${error.message}\n`);
     }
   };
@@ -683,45 +784,53 @@ void loop() {
           </Select>
 
           <div className="flex items-center gap-1">
-            <Dialog open={showNewProject} onOpenChange={setShowNewProject}>
-              <DialogTrigger asChild>
-                <Button variant="outline" size="sm">
-                  <Plus className="h-4 w-4" />
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Create New Project</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div>
-                    <Label htmlFor="projectName">Project Name</Label>
-                    <Input
-                      id="projectName"
-                      value={newProjectName}
-                      onChange={(e) => setNewProjectName(e.target.value)}
-                      placeholder="My Arduino Project"
-                    />
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Switch
-                      id="isPublic"
-                      checked={newProjectPublic}
-                      onCheckedChange={setNewProjectPublic}
-                    />
-                    <Label htmlFor="isPublic">Public Repository</Label>
-                  </div>
-                  <Button onClick={createProject} className="w-full">
-                    <Github className="h-4 w-4 mr-2" />
-                    Create Project & GitHub Repo
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
+            {isAuthenticated ? (
+              <>
+                <Dialog open={showNewProject} onOpenChange={setShowNewProject}>
+                  <DialogTrigger asChild>
+                    <Button variant="outline" size="sm">
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Create New Project</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="projectName">Project Name</Label>
+                        <Input
+                          id="projectName"
+                          value={newProjectName}
+                          onChange={(e) => setNewProjectName(e.target.value)}
+                          placeholder="My Arduino Project"
+                        />
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <Switch
+                          id="isPublic"
+                          checked={newProjectPublic}
+                          onCheckedChange={setNewProjectPublic}
+                        />
+                        <Label htmlFor="isPublic">Public Repository</Label>
+                      </div>
+                      <Button onClick={createProject} className="w-full">
+                        <Github className="h-4 w-4 mr-2" />
+                        Create Project & GitHub Repo
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
 
-            <Button variant="outline" size="sm" onClick={saveProject} disabled={!currentProject}>
-              <Save className="h-4 w-4" />
-            </Button>
+                <Button variant="outline" size="sm" onClick={saveProject} disabled={!currentProject}>
+                  <Save className="h-4 w-4" />
+                </Button>
+              </>
+            ) : (
+              <Button variant="outline" size="sm" onClick={initiateGitHubAuth}>
+                <Github className="h-4 w-4" />
+              </Button>
+            )}
 
             <Button variant="outline" size="sm" onClick={() => setShowBoardManager(true)}>
               <Settings className="h-4 w-4" />
@@ -730,6 +839,27 @@ void loop() {
             <Button variant="outline" size="sm" onClick={() => setShowLibraryManager(true)}>
               <Package className="h-4 w-4" />
             </Button>
+
+            {/* User Menu */}
+            {isAuthenticated && user ? (
+              <div className="flex items-center gap-2 ml-2">
+                <Avatar className="h-8 w-8">
+                  <AvatarImage src={user.avatar_url} alt={user.username} />
+                  <AvatarFallback>
+                    <User className="h-4 w-4" />
+                  </AvatarFallback>
+                </Avatar>
+                <span className="text-sm font-medium">{user.username}</span>
+                <Button variant="ghost" size="sm" onClick={logout}>
+                  <LogOut className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : (
+              <Button variant="outline" size="sm" onClick={initiateGitHubAuth}>
+                <LogIn className="h-4 w-4 mr-1" />
+                Sign In
+              </Button>
+            )}
           </div>
         </div>
       </header>
@@ -741,32 +871,43 @@ void loop() {
           <div className="bg-white border-r border-gray-200 flex flex-col overflow-hidden" style={{width: `${sidebarWidth}px`}}>
             <div className="p-4 border-b border-gray-200">
               <h3 className="font-semibold text-gray-900 mb-2">Projects</h3>
-              <ScrollArea className="h-40">
-                <div className="space-y-2">
-                  {projects.map((project) => (
-                    <div
-                      key={project.id}
-                      onClick={() => loadProject(project)}
-                      className={`p-2 rounded cursor-pointer text-sm transition-colors ${
-                        currentProject?.id === project.id
-                          ? 'bg-blue-100 text-blue-800'
-                          : 'hover:bg-gray-100'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <FolderOpen className="h-4 w-4" />
-                        <span className="truncate">{project.name}</span>
+              {isAuthenticated ? (
+                <ScrollArea className="h-40">
+                  <div className="space-y-2">
+                    {projects.map((project) => (
+                      <div
+                        key={project.id}
+                        onClick={() => loadProject(project)}
+                        className={`p-2 rounded cursor-pointer text-sm transition-colors ${
+                          currentProject?.id === project.id
+                            ? 'bg-blue-100 text-blue-800'
+                            : 'hover:bg-gray-100'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <FolderOpen className="h-4 w-4" />
+                          <span className="truncate">{project.name}</span>
+                        </div>
+                        {project.github_repo && (
+                          <Badge variant="secondary" className="mt-1 text-xs">
+                            <Github className="h-3 w-3 mr-1" />
+                            GitHub
+                          </Badge>
+                        )}
                       </div>
-                      {project.github_repo && (
-                        <Badge variant="secondary" className="mt-1 text-xs">
-                          <Github className="h-3 w-3 mr-1" />
-                          GitHub
-                        </Badge>
-                      )}
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                </ScrollArea>
+              ) : (
+                <div className="text-sm text-gray-500 text-center py-4">
+                  <Github className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                  <p>Sign in with GitHub to manage projects</p>
+                  <Button variant="outline" size="sm" className="mt-2" onClick={initiateGitHubAuth}>
+                    <LogIn className="h-4 w-4 mr-1" />
+                    Sign In
+                  </Button>
                 </div>
-              </ScrollArea>
+              )}
             </div>
             
             <div className="p-4 flex-1">
@@ -784,6 +925,12 @@ void loop() {
                   {isSerialConnected ? <Wifi className="h-4 w-4 text-green-600" /> : <WifiOff className="h-4 w-4 text-red-600" />}
                   <span>Serial: {isSerialConnected ? 'Connected' : 'Disconnected'}</span>
                 </div>
+                {isAuthenticated && (
+                  <div className="flex items-center gap-2">
+                    <Github className="h-4 w-4 text-green-600" />
+                    <span>GitHub: Connected</span>
+                  </div>
+                )}
               </div>
               
               <Separator className="my-4" />
