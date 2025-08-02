@@ -1,70 +1,56 @@
-/* Arduino IDE Styling */
-.Resizer {
-  background: #e5e7eb;
-  opacity: 0.5;
-  z-index: 1;
-  box-sizing: border-box;
-  background-clip: padding-box;
-}
+/* Arduino IDE Advanced Styling */
 
-.Resizer:hover {
-  transition: all 0.2s ease;
-  opacity: 1;
-}
-
-.Resizer.horizontal {
-  height: 4px;
-  margin: -2px 0;
-  border-top: 2px solid rgba(229, 231, 235, 0);
-  border-bottom: 2px solid rgba(229, 231, 235, 0);
-  cursor: row-resize;
-  width: 100%;
-}
-
-.Resizer.horizontal:hover {
-  border-top: 2px solid #3b82f6;
-  border-bottom: 2px solid #3b82f6;
-  background: #3b82f6;
-}
-
-.Resizer.vertical {
+/* Resizable panels */
+.resize-handle-horizontal {
   width: 4px;
-  margin: 0 -2px;
-  border-left: 2px solid rgba(229, 231, 235, 0);
-  border-right: 2px solid rgba(229, 231, 235, 0);
+  background: #e5e7eb;
   cursor: col-resize;
-  height: 100%;
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  z-index: 10;
+  transition: background-color 0.2s ease;
 }
 
-.Resizer.vertical:hover {
-  border-left: 2px solid #3b82f6;
-  border-right: 2px solid #3b82f6;
+.resize-handle-horizontal:hover {
   background: #3b82f6;
 }
 
-.Resizer.disabled {
-  cursor: not-allowed;
+.resize-handle-vertical {
+  height: 4px;
+  background: #e5e7eb;
+  cursor: row-resize;
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  transition: background-color 0.2s ease;
 }
 
-.Resizer.disabled:hover {
-  border-color: transparent;
+.resize-handle-vertical:hover {
+  background: #3b82f6;
 }
 
-/* Custom scrollbar for output */
-.output-container::-webkit-scrollbar {
+/* Custom scrollbars */
+.console-area::-webkit-scrollbar,
+.serial-area::-webkit-scrollbar {
   width: 8px;
 }
 
-.output-container::-webkit-scrollbar-track {
+.console-area::-webkit-scrollbar-track,
+.serial-area::-webkit-scrollbar-track {
   background: #374151;
 }
 
-.output-container::-webkit-scrollbar-thumb {
+.console-area::-webkit-scrollbar-thumb,
+.serial-area::-webkit-scrollbar-thumb {
   background: #6b7280;
   border-radius: 4px;
 }
 
-.output-container::-webkit-scrollbar-thumb:hover {
+.console-area::-webkit-scrollbar-thumb:hover,
+.serial-area::-webkit-scrollbar-thumb:hover {
   background: #9ca3af;
 }
 
@@ -77,54 +63,72 @@
   background-color: #f9fafb !important;
 }
 
-/* Animation for compile/upload buttons */
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
+/* Serial Monitor styling */
+.serial-monitor {
+  background: #1a1a1a;
+  color: #00ff00;
+  padding: 1rem;
+  font-family: 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 
-.animate-pulse {
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+.serial-input {
+  background: #2d2d2d;
+  border: 1px solid #444;
+  color: #fff;
+  padding: 0.5rem;
+  font-family: 'Courier New', monospace;
 }
 
-/* Project card hover effects */
-.project-card {
-  transition: all 0.2s ease-in-out;
+/* Serial Plotter styling */
+.serial-plotter {
+  background: #1a1a1a;
+  border: 1px solid #333;
 }
 
-.project-card:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+.plotter-canvas {
+  width: 100%;
+  height: 100%;
+  background: #000;
+}
+
+/* Console output styling */
+.console-output {
+  background: #1a1a1a;
+  color: #00ff00;
+  padding: 1rem;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 /* Status indicators */
-.status-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.25rem 0.75rem;
-  border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 500;
+.status-connected {
+  color: #10b981;
 }
 
-.status-indicator.connected {
-  background-color: #dcfce7;
-  color: #166534;
+.status-disconnected {
+  color: #ef4444;
 }
 
-.status-indicator.disconnected {
-  background-color: #fef2f2;
-  color: #dc2626;
+.status-compiling {
+  color: #f59e0b;
 }
 
-.status-indicator.compiling {
-  background-color: #fef3c7;
-  color: #d97706;
+/* Board/Library Manager cards */
+.manager-card {
+  transition: all 0.2s ease;
+}
+
+.manager-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 /* Syntax highlighting for output */
@@ -144,75 +148,235 @@
   color: #3b82f6;
 }
 
-/* Loading states */
-.loading-spinner {
-  display: inline-block;
-  width: 1rem;
-  height: 1rem;
-  border: 2px solid #e5e7eb;
+/* Animation for buttons */
+.button-loading {
+  position: relative;
+  pointer-events: none;
+}
+
+.button-loading::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  border: 2px solid transparent;
+  border-top-color: #fff;
   border-radius: 50%;
-  border-top-color: #3b82f6;
-  animation: spin 1s ease-in-out infinite;
+  animation: spin 1s linear infinite;
 }
 
 @keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 }
 
-/* GitHub integration indicators */
-.github-badge {
-  background: linear-gradient(135deg, #24292e 0%, #040d21 100%);
-  color: white;
-  padding: 0.125rem 0.5rem;
-  border-radius: 0.75rem;
-  font-size: 0.75rem;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
+/* Panel collapse animations */
+.panel-enter {
+  opacity: 0;
+  transform: translateY(-10px);
 }
 
-/* Responsive adjustments */
+.panel-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 300ms, transform 300ms;
+}
+
+.panel-exit {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.panel-exit-active {
+  opacity: 0;
+  transform: translateY(-10px);
+  transition: opacity 300ms, transform 300ms;
+}
+
+/* Custom checkbox/switch styling */
+.custom-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+
+.custom-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: 0.3s;
+  border-radius: 24px;
+}
+
+.switch-slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.3s;
+  border-radius: 50%;
+}
+
+input:checked + .switch-slider {
+  background-color: #3b82f6;
+}
+
+input:checked + .switch-slider:before {
+  transform: translateX(20px);
+}
+
+/* Tooltip styling */
+.tooltip {
+  position: relative;
+  display: inline-block;
+}
+
+.tooltip .tooltip-text {
+  visibility: hidden;
+  width: 120px;
+  background-color: #333;
+  color: #fff;
+  text-align: center;
+  border-radius: 6px;
+  padding: 5px;
+  position: absolute;
+  z-index: 1000;
+  bottom: 125%;
+  left: 50%;
+  margin-left: -60px;
+  opacity: 0;
+  transition: opacity 0.3s;
+  font-size: 12px;
+}
+
+.tooltip:hover .tooltip-text {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Responsive design */
 @media (max-width: 768px) {
-  .Resizer.horizontal {
-    height: 8px;
-    margin: -4px 0;
+  .resize-handle-horizontal,
+  .resize-handle-vertical {
+    display: none;
   }
   
-  .Resizer.vertical {
-    width: 8px;
-    margin: 0 -4px;
+  .serial-input {
+    font-size: 16px; /* Prevent zoom on iOS */
   }
 }
 
 /* High contrast mode support */
 @media (prefers-contrast: high) {
-  .Resizer {
+  .resize-handle-horizontal,
+  .resize-handle-vertical {
     background: #000;
     opacity: 1;
   }
   
-  .Resizer:hover {
+  .resize-handle-horizontal:hover,
+  .resize-handle-vertical:hover {
     background: #3b82f6;
   }
 }
 
 /* Reduced motion support */
 @media (prefers-reduced-motion: reduce) {
-  .project-card {
+  .manager-card {
     transition: none;
   }
   
-  .project-card:hover {
+  .manager-card:hover {
     transform: none;
   }
   
-  .animate-pulse {
+  .button-loading::after {
     animation: none;
   }
   
-  .loading-spinner {
-    animation: none;
+  .panel-enter-active,
+  .panel-exit-active {
+    transition: none;
   }
+}
+
+/* Print styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  
+  .console-output,
+  .serial-monitor {
+    color: #000 !important;
+    background: #fff !important;
+  }
+}
+
+/* Focus styles for accessibility */
+.focus-visible:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* Loading states */
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #e5e7eb;
+  border-top: 3px solid #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-primary: #1a1a1a;
+    --bg-secondary: #2d2d2d;
+    --text-primary: #ffffff;
+    --text-secondary: #cccccc;
+    --border-color: #444444;
+  }
+}
+
+/* Custom selection colors */
+::selection {
+  background: #3b82f6;
+  color: white;
+}
+
+::-moz-selection {
+  background: #3b82f6;
+  color: white;
 }
