@@ -1,34 +1,218 @@
-.App-logo {
-    height: 40vmin;
-    pointer-events: none;
+/* Arduino IDE Styling */
+.Resizer {
+  background: #e5e7eb;
+  opacity: 0.5;
+  z-index: 1;
+  box-sizing: border-box;
+  background-clip: padding-box;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
-    }
+.Resizer:hover {
+  transition: all 0.2s ease;
+  opacity: 1;
 }
 
-.App-header {
-    background-color: #0f0f10;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
+.Resizer.horizontal {
+  height: 4px;
+  margin: -2px 0;
+  border-top: 2px solid rgba(229, 231, 235, 0);
+  border-bottom: 2px solid rgba(229, 231, 235, 0);
+  cursor: row-resize;
+  width: 100%;
 }
 
-.App-link {
-    color: #61dafb;
+.Resizer.horizontal:hover {
+  border-top: 2px solid #3b82f6;
+  border-bottom: 2px solid #3b82f6;
+  background: #3b82f6;
 }
 
-@keyframes App-logo-spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
+.Resizer.vertical {
+  width: 4px;
+  margin: 0 -2px;
+  border-left: 2px solid rgba(229, 231, 235, 0);
+  border-right: 2px solid rgba(229, 231, 235, 0);
+  cursor: col-resize;
+  height: 100%;
+}
+
+.Resizer.vertical:hover {
+  border-left: 2px solid #3b82f6;
+  border-right: 2px solid #3b82f6;
+  background: #3b82f6;
+}
+
+.Resizer.disabled {
+  cursor: not-allowed;
+}
+
+.Resizer.disabled:hover {
+  border-color: transparent;
+}
+
+/* Custom scrollbar for output */
+.output-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.output-container::-webkit-scrollbar-track {
+  background: #374151;
+}
+
+.output-container::-webkit-scrollbar-thumb {
+  background: #6b7280;
+  border-radius: 4px;
+}
+
+.output-container::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Monaco Editor custom styling */
+.monaco-editor {
+  border: none !important;
+}
+
+.monaco-editor .margin {
+  background-color: #f9fafb !important;
+}
+
+/* Animation for compile/upload buttons */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Project card hover effects */
+.project-card {
+  transition: all 0.2s ease-in-out;
+}
+
+.project-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Status indicators */
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.status-indicator.connected {
+  background-color: #dcfce7;
+  color: #166534;
+}
+
+.status-indicator.disconnected {
+  background-color: #fef2f2;
+  color: #dc2626;
+}
+
+.status-indicator.compiling {
+  background-color: #fef3c7;
+  color: #d97706;
+}
+
+/* Syntax highlighting for output */
+.output-success {
+  color: #10b981;
+}
+
+.output-error {
+  color: #ef4444;
+}
+
+.output-warning {
+  color: #f59e0b;
+}
+
+.output-info {
+  color: #3b82f6;
+}
+
+/* Loading states */
+.loading-spinner {
+  display: inline-block;
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 50%;
+  border-top-color: #3b82f6;
+  animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* GitHub integration indicators */
+.github-badge {
+  background: linear-gradient(135deg, #24292e 0%, #040d21 100%);
+  color: white;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.75rem;
+  font-size: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .Resizer.horizontal {
+    height: 8px;
+    margin: -4px 0;
+  }
+  
+  .Resizer.vertical {
+    width: 8px;
+    margin: 0 -4px;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .Resizer {
+    background: #000;
+    opacity: 1;
+  }
+  
+  .Resizer:hover {
+    background: #3b82f6;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .project-card {
+    transition: none;
+  }
+  
+  .project-card:hover {
+    transform: none;
+  }
+  
+  .animate-pulse {
+    animation: none;
+  }
+  
+  .loading-spinner {
+    animation: none;
+  }
 }
