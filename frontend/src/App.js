@@ -881,7 +881,7 @@ void loop() {
             </div>
 
             <div className="flex-1 overflow-hidden">
-              {showConsole && console   Tab === 'compiler' && (
+              {showConsole && consoleTab === 'compiler' && (
                 <ScrollArea className="h-full p-4">
                   <pre className="text-sm whitespace-pre-wrap">{output}</pre>
                 </ScrollArea>
